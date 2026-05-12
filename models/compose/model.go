@@ -23,10 +23,12 @@ type (
 // --- Model ---
 
 type Model struct {
-	primary, secondary *tea.Model
+	primary, secondary         *tea.Model
+	primarySize, secondarySize util.Size
 
 	Orientation  Orientation
 	ReverseOrder bool
+	GetSizes     func(primary, scondary *tea.Model, focus Focus) (util.Size, util.Size)
 
 	id         util.ModelId
 	size       util.Size
@@ -55,40 +57,69 @@ func (m Model) Init() tea.Cmd {
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if m.size.UpdateFromMsg(msg) {
-		var focussedView string
-		if focussedModel := m.focussedModel(); focussedModel != nil {
-			focussedView = (*focussedModel).View().Content
+		return m, m.refreshSizes()
+	}
+
+	switch msg := msg.(type) {
+	case ChangeFocusMsg:
+		if msg.id != m.id {
+			break
 		}
 
-		var focussedSize util.Size
-		var unfocussedSize util.Size
-		if m.Orientation == Vertical {
-			height := min(lipgloss.Height(focussedView), m.size.Height)
-			focussedSize = util.Size{m.size.Width, height}
-			unfocussedSize = util.Size{m.size.Width, m.size.Height - height}
-		} else {
-			width := min(lipgloss.Width(focussedView), m.size.Width)
-			focussedSize = util.Size{width, m.size.Height}
-			unfocussedSize = util.Size{m.size.Width - width, m.size.Height}
+		if m.focus != msg.focus {
+			// change focus
+			var cmd tea.Cmd
+			if focussedModel := m.focussedModel(); focussedModel != nil {
+				util.TryBlurTeaModel(*focussedModel)
+			}
+			if unfocussedModel := m.unfocussedModel(); unfocussedModel != nil {
+				util.TryFocusTeaModel(*unfocussedModel, m.lastKeyMap)
+			}
+			m.focus = msg.focus
+			// and refrsh sizes
+			return m, tea.Sequence(cmd, m.refreshSizes())
 		}
+	}
 
-		var focussedCmd tea.Cmd
-		var unfocussedCmd tea.Cmd
-		if model := m.focussedModel(); model != nil {
-			focussedCmd = util.UpdateTeaModelInplace(focussedSize, model)
-		}
-		if model := m.unfocussedModel(); model != nil {
-			unfocussedCmd = util.UpdateTeaModelInplace(unfocussedSize, model)
-		}
-
-		return m, tea.Batch(focussedCmd, unfocussedCmd)
+	// pass remaining messages to focussed model
+	if focussedModel := m.focussedModel(); focussedModel != nil {
+		return m, util.UpdateTeaModelInplace(msg, focussedModel)
 	}
 
 	return m, nil
 }
 
 func (m Model) View() tea.View {
-	return tea.NewView("")
+	var view1, view2 string
+	if m.primary != nil {
+		view1 = lipgloss.NewStyle().
+			Width(m.primarySize.Width).
+			Height(m.primarySize.Height).
+			MaxWidth(m.primarySize.Width).
+			MaxHeight(m.primarySize.Height).
+			Render((*m.primary).View().Content)
+	}
+	if m.secondary != nil {
+		view2 = lipgloss.NewStyle().
+			Width(m.secondarySize.Width).
+			Height(m.secondarySize.Height).
+			MaxWidth(m.secondarySize.Width).
+			MaxHeight(m.secondarySize.Height).
+			Render((*m.secondary).View().Content)
+	}
+
+	if m.ReverseOrder {
+		view1, view2 = view2, view1
+	}
+
+	var view string
+	if m.Orientation == Vertical {
+		view = lipgloss.JoinVertical(lipgloss.Left, view1, view2)
+	} else {
+		view = lipgloss.JoinHorizontal(lipgloss.Top, view1, view2)
+	}
+
+	return tea.NewView(view)
 }
 
 // --- [util.Focusable] ---
