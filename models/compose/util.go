@@ -6,58 +6,75 @@ import (
 	"github.com/jannes-dailidow/go-tea/util"
 )
 
-func (m *Model) focussedModel() *tea.Model {
-	if m.focus == Primary {
-		return m.primary
+func (m *Model) modelByFocus(focus Focus) *tea.Model {
+	if focus == Primary {
+		return &m.primary
 	}
-	return m.secondary
+	return &m.secondary
+}
+
+func (m *Model) focussedModel() *tea.Model {
+	return m.modelByFocus(m.focus)
 }
 
 func (m *Model) unfocussedModel() *tea.Model {
-	if m.focus == Secondary {
-		return m.primary
+	return m.modelByFocus(!m.focus)
+}
+
+func (m *Model) resolveSizes() (util.Size, util.Size) {
+	if m.SizeResolver != nil {
+		return m.SizeResolver(m.size, m.primary, m.secondary, m.focus, m.Orientation)
+	} else {
+		return defaultSizeResolver(m.size, m.primary, m.secondary, m.focus, m.Orientation)
 	}
-	return m.secondary
 }
 
 func (m *Model) refreshSizes() tea.Cmd {
-	if m.GetSizes != nil {
-		m.primarySize, m.secondarySize = m.GetSizes(m.primary, m.secondary, m.focus)
-	} else {
-		// render view of focussed model
-		var focussedView string
-		if focussedModel := m.focussedModel(); focussedModel != nil {
-			focussedView = (*focussedModel).View().Content
-		}
+	// resolve sizes
+	primarySize, secondarySize := m.resolveSizes()
 
-		// calculate sizes
-		var focussedSize, unfocussedSize util.Size
-		if m.Orientation == Vertical {
-			height := min(lipgloss.Height(focussedView), m.size.Height)
-			focussedSize = util.Size{m.size.Width, height}
-			unfocussedSize = util.Size{m.size.Width, m.size.Height - height}
-		} else {
-			width := min(lipgloss.Width(focussedView), m.size.Width)
-			focussedSize = util.Size{width, m.size.Height}
-			unfocussedSize = util.Size{m.size.Width - width, m.size.Height}
-		}
-
-		// cache sizes
-		if m.focus == Primary {
-			m.primarySize, m.secondarySize = focussedSize, unfocussedSize
-		} else {
-			m.primarySize, m.secondarySize = unfocussedSize, focussedSize
-		}
-	}
-
-	// apply sizes to models
+	// apply sizes to models if they changed
 	var primaryCmd, secondaryCmd tea.Cmd
-	if m.primary != nil {
-		primaryCmd = util.UpdateTeaModelInplace(m.primarySize, m.primary)
+	if m.primary != nil && m.primarySize != primarySize {
+		m.primarySize = primarySize
+		primaryCmd = util.TeaUpdateModelInplace(primarySize.ToMsg(), &m.primary)
 	}
-	if m.secondary != nil {
-		secondaryCmd = util.UpdateTeaModelInplace(m.secondarySize, m.secondary)
+	if m.secondary != nil && m.secondarySize != secondarySize {
+		m.secondarySize = secondarySize
+		secondaryCmd = util.TeaUpdateModelInplace(secondarySize.ToMsg(), &m.secondary)
 	}
 
 	return tea.Batch(primaryCmd, secondaryCmd)
+}
+
+// [defaultSizeResolver] implements [SizeResolver]
+var _ SizeResolver = defaultSizeResolver
+
+func defaultSizeResolver(size util.Size, primary, secondary tea.Model, focus Focus, orientation Orientation) (util.Size, util.Size) {
+	// render view of focussed model
+	var focussedView string
+	if focus == Primary && primary != nil {
+		focussedView = primary.View().Content
+	}
+	if focus == Secondary && secondary != nil {
+		focussedView = secondary.View().Content
+	}
+
+	// calculate sizes
+	var focussedSize, unfocussedSize util.Size
+	if orientation == Vertical {
+		height := min(lipgloss.Height(focussedView), size.Height)
+		focussedSize = util.Size{size.Width, height}
+		unfocussedSize = util.Size{size.Width, size.Height - height}
+	} else {
+		width := min(lipgloss.Width(focussedView), size.Width)
+		focussedSize = util.Size{width, size.Height}
+		unfocussedSize = util.Size{size.Width - width, size.Height}
+	}
+
+	if focus == Primary {
+		return focussedSize, unfocussedSize
+	} else {
+		return unfocussedSize, focussedSize
+	}
 }

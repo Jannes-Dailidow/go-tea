@@ -5,13 +5,12 @@ import (
 	"strings"
 
 	"charm.land/bubbles/v2/key"
-	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 )
 
-func (m *Model) shortView() tea.View {
+func (m *Model) shortView() string {
 	if len(m.KeyMap.ShortHelp()) == 0 {
-		return tea.NewView("")
+		return ""
 	}
 
 	var b strings.Builder
@@ -67,12 +66,12 @@ func (m *Model) shortView() tea.View {
 		}
 	}
 
-	return tea.NewView(b.String())
+	return b.String()
 }
 
-func (m *Model) fullView() tea.View {
+func (m *Model) fullView() string {
 	if len(m.KeyMap.FullHelp()) == 0 {
-		return tea.NewView("")
+		return ""
 	}
 
 	var cols []string
@@ -149,5 +148,5 @@ func (m *Model) fullView() tea.View {
 		}
 	}
 
-	return tea.NewView(lipgloss.JoinHorizontal(lipgloss.Top, result...))
+	return lipgloss.JoinHorizontal(lipgloss.Top, result...)
 }

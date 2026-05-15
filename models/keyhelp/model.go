@@ -12,6 +12,8 @@ const (
 	Ellipsis       string = "…"
 )
 
+// --- Model ---
+
 type Model struct {
 	KeyMap   help.KeyMap
 	Styles   help.Styles
@@ -50,14 +52,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) View() tea.View {
-	if m.KeyMap == nil {
-		return tea.NewView("")
-	} else if m.Expanded {
-		return m.fullView()
-	} else {
-		return m.shortView()
+	var view string
+	if m.KeyMap != nil {
+		if m.Expanded {
+			view = m.fullView()
+		} else {
+			view = m.shortView()
+		}
 	}
 
+	return tea.View{
+		Content:   view,
+		AltScreen: true,
+	}
 }
 
 // --- [util.Focusable] ---
